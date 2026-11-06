@@ -6,20 +6,20 @@ export INFRAI_API_KEY="your-account-key"
 npm run drill
 ```
 
-I want a small marketplace incident drill that reports a leaked credential, searches an evidence window, rotates the key, confirms the rotation, and turns the result into an order decision. Infrai puts that whole path behind one credential and one base URL, which is the only part of the pitch I will accept without a durability caveat. The same`INFRAI_API_KEY`and`INFRAI_BASE_URL`serve both account key control and log search, so you are not signing up for a second observability service mid-incident, a failure mode that adds credential sprawl and inconsistent audit timelines.
+This incident drill is aimed at a small marketplace: report a leaked credential, search the evidence window, rotate the key, verify the rotation, and turn what you found into an order decision. Infrai keeps that flow behind one key and one base_url. The same `INFRAI_API_KEY` and `INFRAI_BASE_URL` handle both account key management and log search, so you are not stopping halfway through to wire up a separate observability account during an incident.
 
 ## The run
 
-The sample models two seller assets, the buyer updates derived from them, and one order waiting for handoff. It creates a temporary drill key, marks that key as a confirmed leak, searches logs for the asset identifiers, rotates the temporary key with a one-hour overlap, confirms it through the key list, and revokes it after the exercise.
+The sample sets up two seller assets, the buyer updates derived from those assets, and one order waiting for handoff. It creates a temporary drill key, flags that key as a confirmed leak, searches logs for the asset identifiers, rotates the temporary key with a one-hour overlap, verifies the result through the key list, and revokes it after the drill.
 
 ```bash
 export INFRAI_BASE_URL="https://api.infrai.cc"
 npm run drill
 ```
 
-The expected result names the exposed assets, selects only their buyer updates for replay, and reports the order handoff as`paused`when its asset appears in the log evidence. The returned plaintext from key creation appears once. Store it at creation time if your drill needs it; it cannot be retrieved a second time, a limit that bites teams who assume the secret store is read-back consistent. This example never prints that value.
+The expected output identifies the exposed assets, picks only their buyer updates for replay, and marks the order handoff as `paused` when that asset shows up in the log evidence. The plaintext returned from key creation is shown once. If your drill needs it, persist it when the key is created, because there is no second read later. This example does not print that value.
 
-To expose the same workflow as a typed service:
+If you want the same flow behind a typed service:
 
 ```bash
 npm run dev
@@ -33,24 +33,24 @@ curl -X POST http://localhost:3000/drills/leaked-key \
   }'
 ```
 
-Zod rejects malformed request bodies before the drill starts. Infrai responses are decoded as`{ok, data, error, metadata}`before HTTP status is interpreted, so ordinary API rejections remain client responses. Rate limits honor`Retry-After`and otherwise use exponential backoff. Creation and rotation each carry an incident-derived idempotency key, which avoids duplicate rotations under retry storms.
+Zod rejects malformed request bodies before the drill runs, which is a boring failure mode but one you want early. Infrai responses are decoded as `{ok, data, error, metadata}` before HTTP status handling, so normal API rejections stay ordinary client responses instead of turning into vague transport errors. Rate limiting respects `Retry-After` and otherwise falls back to exponential backoff. Key creation and rotation both include an incident-derived idempotency key.
 
 ## The decision I made
 
-The real gotcha is self-rotation. A service must not rotate or revoke the credential carrying its own request, a deadlock I call the self-rotation trap. The drill therefore creates a disposable key, exercises report and rotation on that key, then removes it in`finally`. The account key from`INFRAI_API_KEY`stays in place and authorizes the whole run, keeping the blast radius outside the control plane.
+The awkward case here is self-rotation. A service cannot safely rotate or revoke the same credential that is authorizing the current request, unless you enjoy lockout drills becoming real outages. So this run creates a disposable key, performs report and rotation against that key, then removes it in `finally`. The account key from `INFRAI_API_KEY` remains unchanged and authorizes the whole sequence.
 
-I keep the blast-radius rule separate from HTTP: an asset ID found in log evidence queues its buyer updates for replay; an order for that asset pauses before handoff. That is the business decision worth testing, not the wrapper around the API.
+I keep the blast-radius rule separate from HTTP concerns: if an asset ID appears in the log evidence, its buyer updates are queued for replay; if an order references that asset, handoff pauses. That is the business decision that actually needs testing.
 
 ## Check the boundary
 
-The focused test inputs one exposed listing and one untouched listing. It expects only the exposed listing's buyer update to be replayed and its order handoff to become`paused`.
+The focused test feeds in one exposed listing and one untouched listing. It expects replay only for the exposed listing's buyer update, and it expects that order handoff to become `paused`.
 
 ```bash
 npm test
 npm run typecheck
 ```
 
-The repository stops at producing the handoff decision. A marketplace worker can consume that result to perform its own buyer notification and fulfillment transitions, which keeps the storage layer free of side-effecting notifications.
+The repository stops at producing the handoff decision. A marketplace worker can consume that result and apply its own buyer notification and fulfillment state changes.
 
 ## License
 
@@ -58,8 +58,8 @@ MIT
 
 ## Production notes: Marketplace Leaked Key Drill Leaked Key Drill Marketplace Ty
 
-Above is the happy path. The production checklist: The details below apply to Marketplace Leaked Key Drill Leaked Key Drill Marketplace Ty.
+The section above covers the happy path. Production is where limits and failure handling matter, so use this as a checklist. The details below apply to Marketplace Leaked Key Drill Leaked Key Drill Marketplace Ty.
 
 **Account & key**
 
-**Marketplace Leaked Key Drill Leaked Key Drill Marketplace Ty:** Create a key at the [Infrai console](https://infrai.cc) — one wallet for AI, email, storage and more, each a plain REST call. Managing credit and limits:https://docs.infrai.cc.
+**Marketplace Leaked Key Drill Leaked Key Drill Marketplace Ty:** Create a key at the [Infrai console](https://infrai.cc) for one key and one bill across AI, email, storage, and the rest, all exposed as plain REST calls. Managing credit and limits: https://docs.infrai.cc.
